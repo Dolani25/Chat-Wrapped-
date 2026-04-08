@@ -1,0 +1,274 @@
+r        <label class="upload-btn cursor-pointer px-8 py-4 rounded-full text-xl font-bold shadow-2xl shadow-wrap-purple/50 flex items-center gap-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+            Select WhatsApp File
+            <input type="file" id="chat-file" accept=".txt,.zip">
+        </label>
+
+        <div id="loading" class="hidden flex-col items-center mt-8">
+            <div class="loader mb-4"></div>
+            <p class="text-wrap-pink font-semibold animate-pulse" id="loading-text">Mining your chat history...</p>
+        </div>
+        
+        <div id="error-msg" class="hidden text-red-400 mt-6 bg-red-900/30 px-4 py-2 rounded border border-red-500/50"></div>
+    </div>
+
+    <div id="story-container" class="w-full h-full absolute top-0 left-0">
+        
+        <div class="progress-container" id="progress-bars"></div>
+        <div id="pause-indicator" class="absolute top-6 right-4 z-50 bg-black/50 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-white tracking-widest opacity-0 transition-opacity duration-200 uppercase pointer-events-none">
+            Paused
+        </div>
+
+        <div id="slides-wrapper" class="w-full h-full relative cursor-pointer" style="touch-action: pan-y !important;">
+            </div>
+
+    </div>
+    
+    <script>
+        gsap.registerPlugin(TextPlugin);
+
+        // --- LINGUISTIC ENGINE & CONFIG ---
+        const stopWords = new Set(["a","about","all","also","and","as","at","be","because","but","by","can","come","could","day","do","even","find","first","for","from","get","give","go","have","he","her","here","him","his","how","i","if","in","into","is","it","its","just","know","like","look","make","man","many","me","more","my","new","no","not","now","of","on","one","only","or","other","our","out","people","say","see","she","so","some","take","tell","than","that","the","their","them","then","there","these","they","thing","think","this","those","time","to","two","up","use","very","want","way","we","well","what","when","which","who","will","with","would","year","you","your","yeah","im","dont","ur","ok","okay","was","are","am","has","had","been","did","got"]);
+        const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
+        const laughRegex = /\b(haha|hahaha|lol|lmao|rofl)\b/gi;
+        const mediaStrings = ["<Media omitted>", "image omitted", "video omitted", "audio omitted", "sticker omitted", "GIF omitted", "attached"];
+
+        // --- CALL DETECTION (Robust multi-format) ---
+        function detectCall(message) {
+            const lower = message.trim().toLowerCase();
+            const result = { isCall: false, type: null, missed: false };
+
+            if (lower === "" || lower === "null") {
+                result.isCall = true;
+                return result;
+            }
+
+            const isVideo  = lower.includes("video call");
+            const isVoice  = lower.includes("voice call") || lower.includes("audio call");
+            const isGeneric = lower.includes("missed call") || lower.includes("call declined");
+
+            if (!isVideo && !isVoice && !isGeneric) return result;
+
+            result.isCall = true;
+            result.type   = isVideo ? "video" : "voice";
+            result.missed = lower.includes("missed") || lower.includes("declined") || lower.includes("no answer");
+
+            return result;
+        }
+
+        const regexAndroid = /^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\s*-\s*([^:]+?):\s*(.*)/;
+        const regexIOS = /^\[(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\]\s*([^:]+?):\s*(.*)/;
+
+        // --- STATE ---
+        let chatData = {
+            totalMessages: 0, totalWords: 0, totalCalls: 0, totalMedia: 0,
+            firstMsg: null, longestMsg: null,
+            busiestDay: { date: null, count: 0 }, activeDays: 0,
+            longestStreak: 0, longestGap: { days: 0, date: null }, peakHour: 0,
+            users: {}, emojis: {}, dates: {}, hours: Array(24).fill(0)
+        };
+        let userArray = [];
+        let slides = [];
+        let currentSlideIdx = 0;
+        let SLIDE_DURATION = 9000;
+        let timelines = [];
+        let isHolding = false;
+        let holdStartTime = 0;
+
+        const LAUGH_WORDS = ["lol", "lmao", "lmfao", "lmfaoo", "haha", "hahaha", "hehe", "rofl", "lmaoo"];
+        function isFunnyMessage(msg) {
+            const lower = msg.toLowerCase();
+            let score = 0;
+            const emojiLaughMatches = msg.match(/😂|🤣|😹|😭/g);
+            if (emojiLaughMatches) score += emojiLaughMatches.length * 2;
+            LAUGH_WORDS.forEach(word => { if (lower.includes(word)) score += 2; });
+            if (/you always|you just|your type|you literally|no way|imagine being|not you|only you|classic you/.test(lower)) score += 1.5;
+            if (msg.length < 80 && score > 0) score += 1;
+            return score;
+        }
+
+        // --- FILE PARSING ---
+        document.getElementById('chat-file').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            let fileName = file.name; // Capture filename to infer the other user
+            
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('error-msg').style.display = 'none';
+            document.querySelector('.upload-btn').style.display = 'none';
+
+            if (fileName.toLowerCase().endsWith('.zip')) {
+                try {
+                    document.getElementById('loading-text').innerText = "Unzipping chat data...";
+                    const zip = await JSZip.loadAsync(file);
+                    let chatText = null;
+                    
+                    // Look for the first .txt file inside the zip
+                    for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.txt')) {
+                            chatText = await zipEntry.async("string");
+                            // Use the internal filename if it helps identify the user better
+                            fileName = zipEntry.name; 
+                            break;
+                        }
+                    }
+
+                    if (chatText) {
+                        document.getElementById('loading-text').innerText = "Mining your chat history...";
+                        setTimeout(() => processChat(chatText, fileName), 50);
+                    } else {
+                        showError("We couldn't find a .txt chat file inside this ZIP.");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showError("Error unzipping file. Make sure it's a valid WhatsApp export.");
+                }
+            } else {
+                // Fallback to standard .txt processing
+                const reader = new FileReader();
+                reader.onload = function(evt) { setTimeout(() => processChat(evt.target.result, fileName), 50); };
+                reader.onerror = () => showError("Error reading file.");
+                reader.readAsText(file);
+            }
+        });
+
+        function showError(msg) {
+            document.getElementById('loading').style.display = 'none';
+            document.querySelector('.upload-btn').style.display = 'flex';
+            const err = document.getElementById('error-msg'); err.innerText = msg; err.style.display = 'block';
+        }
+
+        function parseCustomDate(dateStr, timeStr) {
+            try {
+                let parts = dateStr.split(/[\/\-\.]/);
+                let day, month, year;
+                if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
+                else if (parseInt(parts[0]) > 12) { day = parts[0]; month = parts[1]; year = parts[2]; }
+                else { month = parts[0]; day = parts[1]; year = parts[2]; }
+                if(year.length === 2) year = "20" + year;
+
+                let tParts = timeStr.replace(/[\s\u202F]/g, '').split(':');
+                let h = parseInt(tParts[0]); let m = parseInt(tParts[1]);
+                let lowerTime = timeStr.toLowerCase();
+                if (lowerTime.includes('pm') && h !== 12) h += 12;
+                if (lowerTime.includes('am') && h === 12) h = 0;
+                return new Date(year, month - 1, day, h, m);
+            } catch(e) { return null; }
+        }
+
+        function processChat(text, fileName = "") {
+            // Extract the other person's name from the uploaded filename (e.g. "WhatsApp Chat with Reyna.txt")
+            let inferredOtherUser = null;
+            let nameMatch = fileName.match(/WhatsApp Chat with (.*?)(?:\.txt|\.zip)/i);
+            if (nameMatch) {
+                inferredOtherUser = nameMatch[1].trim();
+            }
+            let unattributedCalls = [];
+
+            const lines = text.split('\n');
+            let lastMsgObj = null;
+            let lastDateObj = null;
+            let currentStreak = 0;
+            let previousDateString = null;
+            let currentConsecutiveSender = null;
+            let consecutiveCount = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                let match = regexAndroid.exec(line) || regexIOS.exec(line);
+
+                if (match) {
+                    const dateStr = match[1]; const timeStr = match[2];
+                    const sender = match[3].trim(); const msgText = match[4].trim();
+
+                    if (sender.includes("added") || sender.includes("changed") || sender.includes("left") || sender.includes("created")) continue;
+
+                    let dateObj = parseCustomDate(dateStr, timeStr);
+                    
+                    if (!chatData.users[sender]) {
+                        chatData.users[sender] = { 
+                            msgs: 0, words: 0, laughs: 0, causedLaughs: 0, humorScore: 0, media: 0, lateNight: 0, 
+                            initiated: 0, replyTimeSum: 0, replyCount: 0,
+                            calls: { total: 0, missed: 0, video: 0, voice: 0 },
+                            questions: 0, doubleTexts: 0, links: 0, morningFirsts: 0,
+                            wordFreq: {}, emojiFreq: {}
+                        };
+                    }
+
+                    // Habit Tracking
+                    if (sender === currentConsecutiveSender) {
+                        consecutiveCount++;
+                        if (consecutiveCount === 3) chatData.users[sender].doubleTexts++;
+                    } else {
+                        currentConsecutiveSender = sender;
+                        consecutiveCount = 1;
+                    }
+
+                    if (msgText.includes('?')) chatData.users[sender].questions++;
+                    if (/(https?:\/\/[^\s]+)|(www\.[^\s]+)/i.test(msgText)) chatData.users[sender].links++;
+
+                    // Time Analytics
+                    if (dateObj) {
+                        chatData.hours[dateObj.getHours()]++;
+                        if (lastDateObj) {
+                            let gapMs = dateObj - lastDateObj;
+                            let gapHours = gapMs / (1000 * 60 * 60);
+                            let gapDays = gapMs / (1000 * 60 * 60 * 24);
+
+                            if (gapHours > 6) chatData.users[sender].initiated++;
+                            else if (lastMsgObj && lastMsgObj.sender !== sender) {
+                                chatData.users[sender].replyTimeSum += gapMs;
+                                chatData.users[sender].replyCount++;
+                            }
+
+                            if (gapDays > chatData.longestGap.days) chatData.longestGap = { days: Math.floor(gapDays), date: dateStr };
+                        }
+
+                        let dateOnly = dateStr;
+                        if (dateOnly !== previousDateString) {
+                            if (lastDateObj && (dateObj - lastDateObj) <= (1000 * 60 * 60 * 48)) currentStreak++;
+                            else currentStreak = 1;
+                            if (currentStreak > chatData.longestStreak) chatData.longestStreak = currentStreak;
+                            chatData.users[sender].morningFirsts++;
+                            previousDateString = dateOnly;
+                            chatData.dates[dateOnly] = 0;
+                        }
+                        lastDateObj = dateObj;
+                    }
+
+                    chatData.dates[dateStr] = (chatData.dates[dateStr] || 0) + 1;
+                    let msgLower = msgText.toLowerCase();
+                    
+                    const callResult = detectCall(msgText);
+                    if (callResult.isCall) {
+                        chatData.totalCalls++;
+                        chatData.users[sender].calls.total++;
+                        if (callResult.missed) chatData.users[sender].calls.missed++;
+                        if (callResult.type === 'video') chatData.users[sender].calls.video++;
+                        else chatData.users[sender].calls.voice++;
+                        lastMsgObj = null; 
+                        continue;
+                    }
+
+                    let ownHumor = isFunnyMessage(msgText);
+                    if (ownHumor > 0) chatData.users[sender].humorScore += ownHumor;
+
+                    let wordLaughs = msgLower.match(/\b(haha+|lol+|lmao+|rofl+|lmfao+|hehe+)\b/g) || [];
+                    let emojiLaughs = msgText.match(/[😂🤣💀😭]/g) || [];
+                    let totalLaughs = wordLaughs.length + emojiLaughs.length;
+
+                    if (totalLaughs > 0) {
+                        chatData.users[sender].laughs += totalLaughs;
+                        if (lastMsgObj && lastMsgObj.sender !== sender) {
+                            let isHeavy = msgLower.match(/\b(lmao+|rofl+|lmfao+)\b/) || emojiLaughs.length >= 2 || msgLower.includes("hahaha");
+                            let isPureReaction = msgText.length <= 15; 
+                            
+                            let laughPoints = 0;
+                            if (isHeavy) laughPoints += 3;
+                            else if (isPureReaction) laughPoints += 2;
+                            else if (msgText.length <= 40) laughPoints += 1;
+
+                            chatData.users[lastMsgObj.sender].causedLaughs += laughPoints;
+                            chatData.users[last
