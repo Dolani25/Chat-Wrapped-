@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chat Wrapped Ultimate</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/TextPlugin.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: {
+                        wrap: {
+                            dark: '#0a0a0a', pink: '#ff1493', purple: '#8a2be2',
+                            blue: '#00ffff', yellow: '#ffd700', green: '#00ff00', orange: '#ff4500'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #0a0a0a; color: white; overflow: hidden;
+            touch-action: none; user-select: none; -webkit-user-select: none;
+        }
+        
+        .bg-gradient-wrap { background: linear-gradient(135deg, #12001a 0%, #000814 100%); }
+
+        #story-container { display: none; perspective: 1000px; }
+
+        .story-slide {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; visibility: hidden; padding: 1.5rem; z-index: 10;
+        }
+
+        .story-slide.active { opacity: 1; visibility: visible; z-index: 20; }
+
+        .progress-container {
+            position: absolute; top: 10px; left: 10px; right: 10px;
+            display: flex; gap: 5px; z-index: 50; pointer-events: none;
+        }
+        .progress-segment { flex: 1; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: white; border-radius: 2px; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
+
+        .blob {
+            position: absolute; filter: blur(80px); opacity: 0.5; z-index: 0; border-radius: 50%;
+            animation: float 10s infinite ease-in-out alternate;
+        }
+        @keyframes float { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(30px, -50px) scale(1.1); } }
+
+        input[type="file"] { display: none; }
+        .upload-btn {
+            background: linear-gradient(45deg, #ff1493, #8a2be2); background-size: 200% 200%;
+            animation: gradientMove 3s ease infinite; transition: transform 0.2s;
+        }
+        .upload-btn:hover { transform: scale(1.05); }
+        @keyframes gradientMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #ff1493;
+            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #export-card { background: #0a0a0a !important; }
+    </style>
+</head>
+<body class="w-screen h-screen overflow-hidden bg-gradient-wrap text-white font-sans selection:bg-wrap-pink selection:text-white">
+
+    <div class="blob bg-wrap-pink w-64 h-64 top-[-10%] left-[-10%]"></div>
+    <div class="blob bg-wrap-purple w-96 h-96 bottom-[-10%] right-[-10%]" style="animation-delay: -2s;"></div>
+    <div class="blob bg-wrap-blue w-72 h-72 top-[40%] left-[60%] opacity-20" style="animation-delay: -4s;"></div>
+
+    <div id="upload-screen" class="relative z-10 flex flex-col items-center justify-center w-full h-full p-6 text-center">
+        <h1 class="text-6xl md:text-8xl font-black mb-4 tracking-tighter">
+            Chat <span class="text-transparent bg-clip-text bg-gradient-to-r from-wrap-pink to-wrap-purple">Wrapped</span>
+        </h1>
+        <p class="text-gray-300 mb-10 max-w-md text-lg">
+            Upload your exported WhatsApp chat (.txt or .zip) to discover the true story of your conversations. 
+            <br><span class="text-xs text-gray-500 mt-3 border border-gray-700 rounded-full px-3 py-1 inline-block">🔒 100% Private. Processed entirely on your device.</span>
+        </p>
+
+        <label class="upload-btn cursor-pointer px-8 py-4 rounded-full text-xl font-bold shadow-2xl shadow-wrap-purple/50 flex items-center gap-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+            Select WhatsApp File
+            <input type="file" id="chat-file" accept=".txt,.zip">
+        </label>
+
+        <div id="loading" class="hidden flex-col items-center mt-8">
+            <div class="loader mb-4"></div>
+            <p class="text-wrap-pink font-semibold animate-pulse" id="loading-text">Mining your chat history...</p>
+        </div>
+        
+        <div id="error-msg" class="hidden text-red-400 mt-6 bg-red-900/30 px-4 py-2 rounded border border-red-500/50"></div>
+    </div>
+
+    <div id="story-container" class="w-full h-full absolute top-0 left-0">
+        
+        <div class="progress-container" id="progress-bars"></div>
+        <div id="pause-indicator" class="absolute top-6 right-4 z-50 bg-black/50 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-white tracking-widest opacity-0 transition-opacity duration-200 uppercase pointer-events-none">
+            Paused
+        </div>
+
+        <div id="slides-wrapper" class="w-full h-full relative cursor-pointer" style="touch-action: pan-y !important;">
+            </div>
+
+    </div>
+    
+    <script>
+        gsap.registerPlugin(TextPlugin);
+
+        // --- LINGUISTIC ENGINE & CONFIG ---
+        const stopWords = new Set(["a","about","all","also","and","as","at","be","because","but","by","can","come","could","day","do","even","find","first","for","from","get","give","go","have","he","her","here","him","his","how","i","if","in","into","is","it","its","just","know","like","look","make","man","many","me","more","my","new","no","not","now","of","on","one","only","or","other","our","out","people","say","see","she","so","some","take","tell","than","that","the","their","them","then","there","these","they","thing","think","this","those","time","to","two","up","use","very","want","way","we","well","what","when","which","who","will","with","would","year","you","your","yeah","im","dont","ur","ok","okay","was","are","am","has","had","been","did","got"]);
+        const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
+        const laughRegex = /\b(haha|hahaha|lol|lmao|rofl)\b/gi;
+        const mediaStrings = ["<Media omitted>", "image omitted", "video omitted", "audio omitted", "sticker omitted", "GIF omitted", "attached"];
+
+        // --- CALL DETECTION (Robust multi-format) ---
+        function detectCall(message) {
+            const lower = message.trim().toLowerCase();
+            const result = { isCall: false, type: null, missed: false };
+
+            if (lower === "" || lower === "null") {
+                result.isCall = true;
+                return result;
+            }
+
+            const isVideo  = lower.includes("video call");
+            const isVoice  = lower.includes("voice call") || lower.includes("audio call");
+            const isGeneric = lower.includes("missed call") || lower.includes("call declined");
+
+            if (!isVideo && !isVoice && !isGeneric) return result;
+
+            result.isCall = true;
+            result.type   = isVideo ? "video" : "voice";
+            result.missed = lower.includes("missed") || lower.includes("declined") || lower.includes("no answer");
+
+            return result;
+        }
+
+        const regexAndroid = /^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\s*-\s*([^:]+?):\s*(.*)/;
+        const regexIOS = /^\[(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\]\s*([^:]+?):\s*(.*)/;
+
+        // --- STATE ---
+        let chatData = {
+            totalMessages: 0, totalWords: 0, totalCalls: 0, totalMedia: 0,
+            firstMsg: null, longestMsg: null,
+            busiestDay: { date: null, count: 0 }, activeDays: 0,
+            longestStreak: 0, longestGap: { days: 0, date: null }, peakHour: 0,
+            users: {}, emojis: {}, dates: {}, hours: Array(24).fill(0)
+        };
+        let userArray = [];
+        let slides = [];
+        let currentSlideIdx = 0;
+        let SLIDE_DURATION = 9000;
+        let timelines = [];
+        let isHolding = false;
+        let holdStartTime = 0;
+
+        const LAUGH_WORDS = ["lol", "lmao", "lmfao", "lmfaoo", "haha", "hahaha", "hehe", "rofl", "lmaoo"];
+        function isFunnyMessage(msg) {
+            const lower = msg.toLowerCase();
+            let score = 0;
+            const emojiLaughMatches = msg.match(/😂|🤣|😹|😭/g);
+            if (emojiLaughMatches) score += emojiLaughMatches.length * 2;
+            LAUGH_WORDS.forEach(word => { if (lower.includes(word)) score += 2; });
+            if (/you always|you just|your type|you literally|no way|imagine being|not you|only you|classic you/.test(lower)) score += 1.5;
+            if (msg.length < 80 && score > 0) score += 1;
+            return score;
+        }
+
+        // --- FILE PARSING ---
+        document.getElementById('chat-file').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            let fileName = file.name; // Capture filename to infer the other user
+            
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('error-msg').style.display = 'none';
+            document.querySelector('.upload-btn').style.display = 'none';
+
+            if (fileName.toLowerCase().endsWith('.zip')) {
+                try {
+                    document.getElementById('loading-text').innerText = "Unzipping chat data...";
+                    const zip = await JSZip.loadAsync(file);
+                    let chatText = null;
+                    
+                    // Look for the first .txt file inside the zip
+                    for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('.txt')) {
+                            chatText = await zipEntry.async("string");
+                            // Use the internal filename if it helps identify the user better
+                            fileName = zipEntry.name; 
+                            break;
+                        }
+                    }
+
+                    if (chatText) {
+                        document.getElementById('loading-text').innerText = "Mining your chat history...";
+                        setTimeout(() => processChat(chatText, fileName), 50);
+                    } else {
+                        showError("We couldn't find a .txt chat file inside this ZIP.");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showError("Error unzipping file. Make sure it's a valid WhatsApp export.");
+                }
+            } else {
+                // Fallback to standard .txt processing
+                const reader = new FileReader();
+                reader.onload = function(evt) { setTimeout(() => processChat(evt.target.result, fileName), 50); };
+                reader.onerror = () => showError("Error reading file.");
+                reader.readAsText(file);
+            }
+        });
+
+        function showError(msg) {
+            document.getElementById('loading').style.display = 'none';
+            document.querySelector('.upload-btn').style.display = 'flex';
+            const err = document.getElementById('error-msg'); err.innerText = msg; err.style.display = 'block';
+        }
+
+        function parseCustomDate(dateStr, timeStr) {
+            try {
+                let parts = dateStr.split(/[\/\-\.]/);
+                let day, month, year;
+                if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
+                else if (parseInt(parts[0]) > 12) { day = parts[0]; month = parts[1]; year = parts[2]; }
+                else { month = parts[0]; day = parts[1]; year = parts[2]; }
+                if(year.length === 2) year = "20" + year;
+
+                let tParts = timeStr.replace(/[\s\u202F]/g, '').split(':');
+                let h = parseInt(tParts[0]); let m = parseInt(tParts[1]);
+                let lowerTime = timeStr.toLowerCase();
+                if (lowerTime.includes('pm') && h !== 12) h += 12;
+                if (lowerTime.includes('am') && h === 12) h = 0;
+                return new Date(year, month - 1, day, h, m);
+            } catch(e) { return null; }
+        }
+
+        function processChat(text, fileName = "") {
+            // Extract the other person's name from the uploaded filename (e.g. "WhatsApp Chat with Reyna.txt")
+            let inferredOtherUser = null;
+            let nameMatch = fileName.match(/WhatsApp Chat with (.*?)(?:\.txt|\.zip)/i);
+            if (nameMatch) {
+                inferredOtherUser = nameMatch[1].trim();
+            }
+            let unattributedCalls = [];
+
+            const lines = text.split('\n');
+            let lastMsgObj = null;
+            let lastDateObj = null;
+            let currentStreak = 0;
+            let previousDateString = null;
+            let currentConsecutiveSender = null;
+            let consecutiveCount = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                let match = regexAndroid.exec(line) || regexIOS.exec(line);
+
+                if (match) {
+                    const dateStr = match[1]; const timeStr = match[2];
+                    const sender = match[3].trim(); const msgText = match[4].trim();
+
+                    if (sender.includes("added") || sender.includes("changed") || sender.includes("left") || sender.includes("created")) continue;
+
+                    let dateObj = parseCustomDate(dateStr, timeStr);
+                    
+                    if (!chatData.users[sender]) {
+                        chatData.users[sender] = { 
+                            msgs: 0, words: 0, laughs: 0, causedLaughs: 0, humorScore: 0, media: 0, lateNight: 0, 
+                            initiated: 0, replyTimeSum: 0, replyCount: 0,
+                            calls: { total: 0, missed: 0, video: 0, voice: 0 },
+                            questions: 0, doubleTexts: 0, links: 0, morningFirsts: 0,
+                            wordFreq: {}, emojiFreq: {}
+                        };
+                    }
+
+                    // Habit Tracking
+                    if (sender === currentConsecutiveSender) {
+                        consecutiveCount++;
+                        if (consecutiveCount === 3) chatData.users[sender].doubleTexts++;
+                    } else {
+                        currentConsecutiveSender = sender;
+                        consecutiveCount = 1;
+                    }
+
+                    if (msgText.includes('?')) chatData.users[sender].questions++;
+                    if (/(https?:\/\/[^\s]+)|(www\.[^\s]+)/i.test(msgText)) chatData.users[sender].links++;
+
+                    // Time Analytics
+                    if (dateObj) {
+                        chatData.hours[dateObj.getHours()]++;
+                        if (lastDateObj) {
+                            let gapMs = dateObj - lastDateObj;
+                            let gapHours = gapMs / (1000 * 60 * 60);
+                            let gapDays = gapMs / (1000 * 60 * 60 * 24);
+
+                            if (gapHours > 6) chatData.users[sender].initiated++;
+                            else if (lastMsgObj && lastMsgObj.sender !== sender) {
+                                chatData.users[sender].replyTimeSum += gapMs;
+                                chatData.users[sender].replyCount++;
+                            }
+
+                            if (gapDays > chatData.longestGap.days) chatData.longestGap = { days: Math.floor(gapDays), date: dateStr };
+                        }
+
+                        let dateOnly = dateStr;
+                        if (dateOnly !== previousDateString) {
+                            if (lastDateObj && (dateObj - lastDateObj) <= (1000 * 60 * 60 * 48)) currentStreak++;
+                            else currentStreak = 1;
+                            if (currentStreak > chatData.longestStreak) chatData.longestStreak = currentStreak;
+                            chatData.users[sender].morningFirsts++;
+                            previousDateString = dateOnly;
+                            chatData.dates[dateOnly] = 0;
+                        }
+                        lastDateObj = dateObj;
+                    }
+
+                    chatData.dates[dateStr] = (chatData.dates[dateStr] || 0) + 1;
+                    let msgLower = msgText.toLowerCase();
+                    
+                    const callResult = detectCall(msgText);
+                    if (callResult.isCall) {
+                        chatData.totalCalls++;
+                        chatData.users[sender].calls.total++;
+                        if (callResult.missed) chatData.users[sender].calls.missed++;
+                        if (callResult.type === 'video') chatData.users[sender].calls.video++;
+                        else chatData.users[sender].calls.voice++;
+                        lastMsgObj = null; 
+                        continue;
+                    }
+
+                    let ownHumor = isFunnyMessage(msgText);
+                    if (ownHumor > 0) chatData.users[sender].humorScore += ownHumor;
+
+                    let wordLaughs = msgLower.match(/\b(haha+|lol+|lmao+|rofl+|lmfao+|hehe+)\b/g) || [];
+                    let emojiLaughs = msgText.match(/[😂🤣💀😭]/g) || [];
+                    let totalLaughs = wordLaughs.length + emojiLaughs.length;
+
+                    if (totalLaughs > 0) {
+                        chatData.users[sender].laughs += totalLaughs;
+                        if (lastMsgObj && lastMsgObj.sender !== sender) {
+                            let isHeavy = msgLower.match(/\b(lmao+|rofl+|lmfao+)\b/) || emojiLaughs.length >= 2 || msgLower.includes("hahaha");
+                            let isPureReaction = msgText.length <= 15; 
+                            
+                            let laughPoints = 0;
+                            if (isHeavy) laughPoints += 3;
+                            else if (isPureReaction) laughPoints += 2;
+                            else if (msgText.length <= 40) laughPoints += 1;
+
+                            chatData.users[lastMsgObj.sender].causedLaughs += laughPoints;
+                            chatData.users[lastMsgObj.sender].humorScore += laughPoints;
+                        }
+                    }
+
+                    if (mediaStrings.some(ms => msgLower.includes(ms.toLowerCase()))) {
+                        chatData.totalMedia++;
+                        chatData.users[sender].media++;
+                        lastMsgObj = { sender, text: "[Media]" };
+                        continue; 
+                    }
+
+                    lastMsgObj = { sender, text: msgText };
+
+                    let h = dateObj ? dateObj.getHours() : 0;
+                    if (h >= 0 && h < 4) chatData.users[sender].lateNight++;
+
+                    if (!chatData.firstMsg) chatData.firstMsg = { date: dateStr, time: timeStr, sender, text: msgText };
+                    chatData.totalMessages++;
+                    chatData.users[sender].msgs++;
+                    
+                    processMessageText(msgText, sender);
+                    
+                } else {
+                    // System level calls lacking a sender colon
+                    let sysMatch = line.match(/^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\s*-\s*(.*)/) || 
+                                   line.match(/^\[(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}),\s*(\d{1,2}:\d{2}:\d{2}(?:[\s\u202F]?[aApP][mM])?)\]\s*(.*)/);
+                    
+                    if (sysMatch) {
+                        let callResult = detectCall(sysMatch[3]);
+                        if (callResult.isCall) {
+                            chatData.totalCalls++;
+                            unattributedCalls.push(callResult); // Save to attribute later
+                            lastMsgObj = null; 
+                            continue;
+                        }
+                    }
+
+                    if (lastMsgObj) {
+                        lastMsgObj.text += '\n' + line;
+                        let lineLower = line.toLowerCase();
+                        let wordLaughs = lineLower.match(/\b(haha+|lol+|lmao+|rofl+|lmfao+|hehe+)\b/g) || [];
+                        let emojiLaughs = line.match(/[😂🤣💀😭]/g) || [];
+                        let totalLaughs = wordLaughs.length + emojiLaughs.length;
+
+                        if (totalLaughs > 0) chatData.users[lastMsgObj.sender].laughs += totalLaughs;
+                        processMessageText(line, lastMsgObj.sender);
+                    }
+                }
+            }
+
+            if (chatData.totalMessages === 0) {
+                showError("Invalid format. Make sure it's a raw WhatsApp .txt export.");
+                return;
+            }
+
+            // --- RESOLVE UNATTRIBUTED SYSTEM CALLS ---
+            if (unattributedCalls.length > 0) {
+                let targetUser = null;
+                let userKeys = Object.keys(chatData.users);
+
+                if (inferredOtherUser) {
+                    // Strip emojis for cleaner matching
+                    let cleanInferred = inferredOtherUser.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
+                    
+                    targetUser = userKeys.find(u => u === inferredOtherUser) || 
+                                 userKeys.find(u => inferredOtherUser.includes(u)) ||
+                                 userKeys.find(u => u.includes(cleanInferred) && cleanInferred.length > 2);
+                }
+
+                // Fallback heuristic if filename extraction fails in a 1-on-1 chat
+                if (!targetUser && userKeys.length === 2) {
+                    let u1 = userKeys[0]; let u2 = userKeys[1];
+                    targetUser = chatData.users[u1].calls.total < chatData.users[u2].calls.total ? u1 : u2;
+                }
+
+                if (targetUser && chatData.users[targetUser]) {
+                    unattributedCalls.forEach(call => {
+                        chatData.users[targetUser].calls.total++;
+                        if (call.missed) chatData.users[targetUser].calls.missed++;
+                        if (call.type === 'video') chatData.users[targetUser].calls.video++;
+                        else chatData.users[targetUser].calls.voice++;
+                    });
+                }
+            }
+
+            chatData.activeDays = Object.keys(chatData.dates).length;
+            for (let d in chatData.dates) {
+                if (chatData.dates[d] > chatData.busiestDay.count) {
+                    chatData.busiestDay.count = chatData.dates[d];
+                    chatData.busiestDay.date = d;
+                }
+            }
+
+            let maxHourVal = 0;
+            chatData.hours.forEach((c, i) => { if(c > maxHourVal) { maxHourVal = c; chatData.peakHour = i; } });
+
+            userArray = Object.keys(chatData.users).map(name => {
+                let u = chatData.users[name];
+                u.avgReplyMin = u.replyCount > 0 ? (u.replyTimeSum / u.replyCount) / 60000 : 0;
+                u.wordsPerMsg = u.msgs > 0 ? (u.words / u.msgs) : 0;
+                u.topEmojis = Object.entries(u.emojiFreq).sort((a,b)=>b[1]-a[1]).slice(0,3);
+                u.topWords = Object.entries(u.wordFreq).sort((a,b)=>b[1]-a[1]).slice(0,3);
+                return { name, ...u };
+            }).sort((a, b) => b.msgs - a.msgs);
+
+            buildStorySlides();
+        }
+
+        function processMessageText(text, sender) {
+            const cleanText = text.toLowerCase().replace(/[^\w\s😂-🙏]/gu, '');
+            const words = cleanText.split(/\s+/).filter(w => w.length > 0);
+            
+            chatData.totalWords += words.length;
+            chatData.users[sender].words += words.length;
+
+            words.forEach(w => {
+                if (!stopWords.has(w) && w.length > 2 && !w.match(emojiRegex)) {
+                    chatData.users[sender].wordFreq[w] = (chatData.users[sender].wordFreq[w] || 0) + 1;
+                }
+            });
+
+            const emojis = text.match(emojiRegex);
+            if (emojis) {
+                emojis.forEach(e => {
+                    chatData.emojis[e] = (chatData.emojis[e] || 0) + 1;
+                    chatData.users[sender].emojiFreq[e] = (chatData.users[sender].emojiFreq[e] || 0) + 1;
+                });
+            }
+        }
+
+        // --- STORY BUILDING ---
+        function buildStorySlides() {
+            const wrapper = document.getElementById('slides-wrapper');
+            const pBarContainer = document.getElementById('progress-bars');
+            
+            let slideConfigs = [];
+            slideConfigs.push(generateIntroSlide());
+            slideConfigs.push(generateMilestoneSlide());
+            slideConfigs.push(generateTalkerSlide());
+            
+            if (chatData.totalCalls > 0) slideConfigs.push(generateCallSlide());
+            if (chatData.totalMedia > 0) slideConfigs.push(generateMediaSlide());
+            
+            slideConfigs.push(generateTimeSlide());
+            slideConfigs.push(generateInteractionSlide());
+            slideConfigs.push(generateHabitsSlide());
+            slideConfigs.push(generateWordsmithSlide());
+            slideConfigs.push(generateEmojiSlide());
+            slideConfigs.push(generateAwardsSlide());
+            slideConfigs.push(generateSummarySlide());
+
+            wrapper.innerHTML = slideConfigs.map(s => s.html).join('');
+            
+            pBarContainer.innerHTML = slideConfigs.map((_, i) => `
+                <div class="progress-segment"><div class="progress-fill" id="p-fill-${i}"></div></div>
+            `).join('');
+
+            slides = document.querySelectorAll('.story-slide');
+            
+            timelines = slideConfigs.map((config, index) => {
+                const tl = gsap.timeline({ paused: true });
+                config.animation(tl, slides[index]);
+                return tl;
+            });
+
+            const hammer = new Hammer(wrapper);
+            hammer.on('swipeleft', () => { if(!isHolding) nextSlide(); });
+            hammer.on('swiperight', () => { if(!isHolding) prevSlide(); });
+
+            document.getElementById('upload-screen').style.display = 'none';
+            document.getElementById('story-container').style.display = 'block';
+            
+            startSlide(0);
+        }
+
+        // --- SLIDE GENERATORS ---
+        function generateIntroSlide() {
+            let names = userArray.slice(0,2).map(u => u.name).join(" & ");
+            if (userArray.length > 2) names = "The Group Chat";
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-br from-[#12001a] to-black">
+                    <div class="text-center w-full px-4">
+                        <p class="text-2xl text-wrap-pink font-bold mb-4 s-eye opacity-0 translate-y-4">Your Data is Ready.</p>
+                        <h1 class="text-5xl md:text-7xl font-black mb-8 leading-tight s-title opacity-0 translate-y-4">
+                            The Story of<br>
+                            <span class="text-transparent bg-clip-text bg-gradient-to-r from-wrap-pink to-wrap-purple">${names}</span>
+                        </h1>
+                        <p class="text-gray-400 s-sub opacity-0">Let's look at the receipts.</p>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.s-eye'), { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" })
+                      .to(el.querySelector('.s-title'), { opacity: 1, y: 0, duration: 1, ease: "power3.out" }, "-=0.4")
+                      .to(el.querySelector('.s-sub'), { opacity: 1, duration: 1 }, "-=0.2");
+                }
+            };
+        }
+
+        function generateMilestoneSlide() {
+            return {
+                html: `
+                <div class="story-slide bg-[#050505]">
+                    <div class="w-full max-w-md text-center">
+                        <p class="text-xl text-gray-400 mb-4 ms-1 opacity-0">You guys sent</p>
+                        <h2 class="text-7xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 mb-2" id="vol-num">0</h2>
+                        <p class="text-3xl font-bold text-wrap-pink ms-2 opacity-0 mb-10">Messages</p>
+                        
+                        <div class="grid grid-cols-2 gap-4 ms-cards opacity-0 translate-y-8">
+                            <div class="stat-card p-4 rounded-2xl">
+                                <p class="text-sm text-gray-400 mb-1">Longest Streak</p>
+                                <p class="text-3xl font-black text-wrap-yellow">${chatData.longestStreak} <span class="text-sm">days</span></p>
+                            </div>
+                            <div class="stat-card p-4 rounded-2xl">
+                                <p class="text-sm text-gray-400 mb-1">Total Words</p>
+                                <p class="text-3xl font-black text-wrap-blue">${Math.round(chatData.totalWords/1000)}k+</p>
+                            </div>
+                            <div class="stat-card p-4 rounded-2xl col-span-2 border-red-500/30">
+                                <p class="text-sm text-gray-400 mb-1">Longest Silence</p>
+                                <p class="text-xl font-bold text-red-400">Ghosted for ${chatData.longestGap.days} days</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.ms-1'), { opacity: 1, duration: 0.5 })
+                      .to({}, { duration: 1.5, onUpdate: function() {
+                          document.getElementById('vol-num').innerText = Math.floor(this.progress() * chatData.totalMessages).toLocaleString();
+                      }}, "-=0.2")
+                      .to(el.querySelector('.ms-2'), { opacity: 1, duration: 0.5 }, "-=1")
+                      .to(el.querySelector('.ms-cards'), { opacity: 1, y: 0, duration: 0.8, ease: "back.out(1.2)" }, "-=0.2");
+                }
+            };
+        }
+
+        function generateTalkerSlide() {
+            let topUser = userArray[0];
+            let maxMsgs = topUser.msgs;
+            
+            let barsHtml = userArray.slice(0, 4).map((u, i) => {
+                let p = (u.msgs / maxMsgs) * 100;
+                let color = i===0 ? 'bg-wrap-pink' : i===1 ? 'bg-wrap-purple' : 'bg-wrap-blue';
+                return `
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="font-bold truncate w-2/3">${u.name}</span>
+                        <span>${u.msgs.toLocaleString()}</span>
+                    </div>
+                    <div class="w-full bg-white/10 rounded-full h-4 overflow-hidden">
+                        <div class="h-full ${color} rounded-full tlk-bar" style="width: 0%" data-width="${p}%"></div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-t from-[#1a001a] to-black">
+                    <div class="w-full max-w-md">
+                        <div class="text-5xl mb-4 tk-icon opacity-0 scale-50">🗣️</div>
+                        <h2 class="text-4xl font-black mb-2 tk-title opacity-0 translate-y-4">Who carries the chat?</h2>
+                        <p class="text-gray-400 mb-8 tk-sub opacity-0">It's not a competition, but <span class="text-wrap-pink font-bold">${topUser.name}</span> won.</p>
+                        
+                        <div class="stat-card p-6 rounded-2xl tk-content opacity-0">
+                            ${barsHtml}
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.tk-icon'), { opacity: 1, scale:1, duration: 0.5, ease: "back.out" })
+                      .to(el.querySelector('.tk-title'), { opacity: 1, y: 0, duration: 0.5 }, "-=0.3")
+                      .to(el.querySelector('.tk-sub'), { opacity: 1, duration: 0.5 }, "-=0.2")
+                      .to(el.querySelector('.tk-content'), { opacity: 1, duration: 0.5 })
+                      .to(el.querySelectorAll('.tlk-bar'), { 
+                          width: (i, target) => target.dataset.width, 
+                          duration: 1.2, ease: "power3.out", stagger: 0.15
+                      });
+                }
+            };
+        }
+
+        function generateCallSlide() {
+            let callerOfYear = [...userArray].sort((a,b) => b.calls.total - a.calls.total)[0];
+            let videoAddict = [...userArray].sort((a,b) => b.calls.video - a.calls.video)[0];
+            let ghosted = [...userArray].sort((a,b) => b.calls.missed - a.calls.missed)[0];
+            
+            let totalVoice = 0; let totalVideo = 0; let totalMissed = 0;
+            userArray.forEach(u => {
+                totalVoice += u.calls.voice; totalVideo += u.calls.video; totalMissed += u.calls.missed;
+            });
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-tr from-[#003300] to-[#000]">
+                    <div class="w-full max-w-md">
+                        <div class="text-5xl mb-4 call-icon opacity-0 scale-50">☎️</div>
+                        <h2 class="text-4xl font-black mb-2 call-title opacity-0">The Hotline</h2>
+                        <p class="text-gray-400 mb-6 call-sub opacity-0">You rang each other <span class="text-white font-bold">${chatData.totalCalls}</span> times.</p>
+                        
+                        <div class="flex gap-4 mb-6 call-stats opacity-0">
+                            <div class="flex-1 bg-white/5 rounded-xl p-3 text-center border border-white/10">
+                                <span class="text-xl">📞</span><p class="text-xl font-bold">${totalVoice}</p><p class="text-xs text-gray-400">Voice</p>
+                            </div>
+                            <div class="flex-1 bg-white/5 rounded-xl p-3 text-center border border-white/10">
+                                <span class="text-xl">🎥</span><p class="text-xl font-bold">${totalVideo}</p><p class="text-xs text-gray-400">Video</p>
+                            </div>
+                            <div class="flex-1 bg-white/5 rounded-xl p-3 text-center border border-red-500/30">
+                                <span class="text-xl">❌</span><p class="text-xl font-bold text-red-400">${totalMissed}</p><p class="text-xs text-gray-400">Missed</p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center bg-white/5 p-4 rounded-xl call-award opacity-0 translate-x-10 border-l-4 border-wrap-green">
+                                <div><p class="text-xs text-gray-400 uppercase tracking-widest">Caller of the Year</p><p class="font-bold text-lg truncate w-40">${callerOfYear.name}</p></div>
+                                <div class="text-2xl">🏆</div>
+                            </div>
+                            ${ghosted.calls.missed > 0 ? `
+                            <div class="flex justify-between items-center bg-white/5 p-4 rounded-xl call-award opacity-0 translate-x-10 border-l-4 border-red-500">
+                                <div><p class="text-xs text-gray-400 uppercase tracking-widest">Ghosted Caller</p><p class="font-bold text-lg text-red-400 truncate w-40">${ghosted.name}</p></div>
+                                <div class="text-2xl">👻</div>
+                            </div>` : ''}
+                            ${videoAddict.calls.video > 0 ? `
+                            <div class="flex justify-between items-center bg-white/5 p-4 rounded-xl call-award opacity-0 translate-x-10 border-l-4 border-wrap-blue">
+                                <div><p class="text-xs text-gray-400 uppercase tracking-widest">Video Call Addict</p><p class="font-bold text-lg truncate w-40">${videoAddict.name}</p></div>
+                                <div class="text-2xl">🤳</div>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.call-icon'), { opacity: 1, scale:1, duration: 0.5, ease: "back.out" })
+                      .to(el.querySelector('.call-title'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelector('.call-sub'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelector('.call-stats'), { opacity: 1, y: 0, duration: 0.5 }, "-=0.2")
+                      .to(el.querySelectorAll('.call-award'), { opacity: 1, x: 0, duration: 0.5, stagger: 0.15, ease: "power2.out" });
+                }
+            }
+        }
+
+        function generateMediaSlide() {
+            let mediaUsers = [...userArray].sort((a,b) => b.media - a.media).slice(0, 3);
+            
+            let rankHtml = mediaUsers.map((u, i) => `
+                <div class="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 med-item opacity-0 translate-x-10">
+                    <div class="flex items-center gap-3 w-2/3">
+                        <span class="text-2xl font-black text-gray-600">#${i+1}</span>
+                        <span class="font-bold text-lg truncate">${u.name}</span>
+                    </div>
+                    <div class="text-wrap-orange font-bold text-xl">${u.media.toLocaleString()} <span class="text-sm font-normal text-gray-400">files</span></div>
+                </div>
+            `).join('');
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-tr from-[#3a0000] to-[#0a0a0a]">
+                    <div class="w-full max-w-md">
+                        <div class="text-5xl mb-4 med-icon opacity-0 scale-50">📸</div>
+                        <h2 class="text-4xl font-black mb-2 med-title opacity-0">The Media Moguls</h2>
+                        <p class="text-gray-400 mb-8 med-sub opacity-0">You shared <span class="text-white font-bold">${chatData.totalMedia}</span> photos, videos, and stickers.</p>
+                        <div class="space-y-3">
+                            ${rankHtml}
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.med-icon'), { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2)" })
+                      .to(el.querySelector('.med-title'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelector('.med-sub'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelectorAll('.med-item'), { opacity: 1, x: 0, duration: 0.5, stagger: 0.15, ease: "power2.out" });
+                }
+            };
+        }
+
+        function generateHabitsSlide() {
+            let doubleTexter = [...userArray].sort((a,b) => b.doubleTexts - a.doubleTexts)[0];
+            let interrogator = [...userArray].sort((a,b) => b.questions - a.questions)[0];
+            let linkSharer = [...userArray].sort((a,b) => b.links - a.links)[0];
+            let morningAlarm = [...userArray].sort((a,b) => b.morningFirsts - a.morningFirsts)[0];
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-bl from-[#002233] to-[#000]">
+                    <div class="w-full max-w-md">
+                        <div class="text-5xl mb-4 hb-icon opacity-0 scale-50">🕵️</div>
+                        <h2 class="text-4xl font-black mb-2 hb-title opacity-0">Texting Quirks</h2>
+                        <p class="text-gray-400 mb-6 hb-sub opacity-0">The data exposed your habits.</p>
+                        
+                        <div class="space-y-3">
+                            <div class="bg-white/5 p-4 rounded-xl border border-white/10 hb-card opacity-0 translate-y-4">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-2xl">📱</span>
+                                    <p class="font-bold text-lg">The Double Texter</p>
+                                </div>
+                                <p class="text-sm text-gray-400"><span class="text-wrap-pink font-bold">${doubleTexter.name}</span> sent 3+ messages in a row <span class="text-white">${doubleTexter.doubleTexts}</span> times before getting a reply.</p>
+                            </div>
+
+                            <div class="bg-white/5 p-4 rounded-xl border border-white/10 hb-card opacity-0 translate-y-4">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-2xl">❓</span>
+                                    <p class="font-bold text-lg">The Interrogator</p>
+                                </div>
+                                <p class="text-sm text-gray-400"><span class="text-wrap-blue font-bold">${interrogator.name}</span> asked <span class="text-white">${interrogator.questions}</span> questions.</p>
+                            </div>
+
+                            ${linkSharer.links > 0 ? `
+                            <div class="bg-white/5 p-4 rounded-xl border border-white/10 hb-card opacity-0 translate-y-4">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-2xl">🔗</span>
+                                    <p class="font-bold text-lg">The Plug</p>
+                                </div>
+                                <p class="text-sm text-gray-400"><span class="text-wrap-orange font-bold">${linkSharer.name}</span> shared <span class="text-white">${linkSharer.links}</span> links/TikToks.</p>
+                            </div>` : ''}
+
+                            <div class="bg-white/5 p-4 rounded-xl border border-white/10 hb-card opacity-0 translate-y-4">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-2xl">🌅</span>
+                                    <p class="font-bold text-lg">The Morning Alarm</p>
+                                </div>
+                                <p class="text-sm text-gray-400"><span class="text-wrap-yellow font-bold">${morningAlarm.name}</span> was usually the first to text on a new day.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.hb-icon'), { opacity: 1, scale:1, duration: 0.5, ease: "back.out" })
+                      .to(el.querySelector('.hb-title'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelector('.hb-sub'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelectorAll('.hb-card'), { opacity: 1, y: 0, duration: 0.5, stagger: 0.15, ease: "power2.out" });
+                }
+            }
+        }
+
+        function generateTimeSlide() {
+            let h = chatData.peakHour;
+            let displayHour = h === 0 ? "12 AM" : h > 12 ? (h-12) + " PM" : h === 12 ? "12 PM" : h + " AM";
+            
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-br from-[#1a0f00] to-[#0a0a0a]">
+                    <div class="w-full max-w-md text-center">
+                        <div class="text-6xl mb-6 tm-icon opacity-0 scale-50">⏰</div>
+                        <h2 class="text-4xl font-black mb-4 tm-title opacity-0">You peak at <span class="text-wrap-orange">${displayHour}</span></h2>
+                        <p class="text-gray-400 mb-8 tm-sub opacity-0">The busiest time of day for this chat.</p>
+                        
+                        <div class="stat-card p-6 rounded-2xl flex items-end justify-between h-40 gap-1 tm-chart opacity-0">
+                            ${chatData.hours.map((val, i) => {
+                                let height = (val / chatData.hours[chatData.peakHour]) * 100;
+                                let isPeak = i === chatData.peakHour;
+                                return `<div class="w-full rounded-t-sm ${isPeak ? 'bg-wrap-orange' : 'bg-white/20'}" style="height: ${height}%"></div>`;
+                            }).join('')}
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-500 mt-2 px-2 tm-chart opacity-0">
+                            <span>12am</span><span>12pm</span><span>11pm</span>
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.tm-icon'), { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2)" })
+                      .to(el.querySelector('.tm-title'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelector('.tm-sub'), { opacity: 1, duration: 0.4 }, "-=0.2")
+                      .to(el.querySelectorAll('.tm-chart'), { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" });
+                }
+            };
+        }
+
+        function generateInteractionSlide() {
+            let fastest = [...userArray].sort((a,b) => a.avgReplyMin - b.avgReplyMin).filter(u => u.avgReplyMin > 0)[0];
+            let slowest = [...userArray].sort((a,b) => b.avgReplyMin - a.avgReplyMin)[0];
+            let starter = [...userArray].sort((a,b) => b.initiated - a.initiated)[0];
+
+            if(!fastest) fastest = userArray[0];
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-tr from-[#001a33] to-[#000]">
+                    <div class="w-full max-w-md">
+                        <h2 class="text-4xl font-black mb-8 in-title opacity-0">The Dynamics</h2>
+                        
+                        <div class="space-y-4">
+                            <div class="stat-card p-4 rounded-xl flex items-center gap-4 in-card opacity-0 translate-x-[-20px]">
+                                <div class="text-4xl">⚡</div>
+                                <div>
+                                    <p class="text-sm text-gray-400">Fastest Replier</p>
+                                    <p class="font-bold text-lg truncate w-48">${fastest.name} <span class="text-sm text-wrap-blue font-normal">(${Math.round(fastest.avgReplyMin)}m avg)</span></p>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card p-4 rounded-xl flex items-center gap-4 in-card opacity-0 translate-x-[-20px]">
+                                <div class="text-4xl">👻</div>
+                                <div>
+                                    <p class="text-sm text-gray-400">The Ghost</p>
+                                    <p class="font-bold text-lg truncate w-48">${slowest.name} <span class="text-sm text-red-400 font-normal">(${Math.round(slowest.avgReplyMin)}m avg)</span></p>
+                                </div>
+                            </div>
+
+                            <div class="stat-card p-4 rounded-xl flex items-center gap-4 border-wrap-green/30 in-card opacity-0 translate-x-[-20px]">
+                                <div class="text-4xl">🎬</div>
+                                <div>
+                                    <p class="text-sm text-gray-400">Conversation Starter</p>
+                                    <p class="font-bold text-lg text-wrap-green truncate w-48">${starter.name}</p>
+                                    <p class="text-xs text-gray-500">Starts the chat after long silences</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.in-title'), { opacity: 1, duration: 0.5 })
+                      .to(el.querySelectorAll('.in-card'), { opacity: 1, x: 0, duration: 0.6, stagger: 0.2, ease: "back.out(1.2)" });
+                }
+            };
+        }
+
+        function generateWordsmithSlide() {
+            let wordsHTML = userArray.slice(0,2).map(u => `
+                <div class="bg-white/5 p-4 rounded-xl border border-white/10 ws-box opacity-0 translate-x-10">
+                    <h3 class="font-bold text-wrap-blue mb-2 truncate">${u.name}'s Vocab</h3>
+                    <div class="flex gap-2 flex-wrap">
+                        ${u.topWords.map(w => `<span class="bg-black/50 px-3 py-1 rounded-full text-sm">"${w[0]}"</span>`).join('')}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-3 text-right">Avg length: ${Math.round(u.wordsPerMsg)} words/msg</p>
+                </div>
+            `).join('');
+
+            return {
+                html: `
+                <div class="story-slide bg-[#0a0f14]">
+                    <div class="w-full max-w-md">
+                        <h2 class="text-4xl font-black mb-2 ws-title opacity-0">Signature Words</h2>
+                        <p class="text-gray-400 mb-8 ws-sub opacity-0">We filtered the boring stuff. Here is what you actually say.</p>
+                        
+                        <div class="space-y-4">
+                            ${wordsHTML}
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.ws-title'), { opacity: 1, duration: 0.5 })
+                      .to(el.querySelector('.ws-sub'), { opacity: 1, duration: 0.5 }, "-=0.2")
+                      .to(el.querySelectorAll('.ws-box'), { opacity: 1, x: 0, duration: 0.6, stagger: 0.2, ease: "power2.out" });
+                }
+            };
+        }
+
+        function generateEmojiSlide() {
+            const sortedEmojis = Object.entries(chatData.emojis).sort((a,b) => b[1] - a[1]).slice(0, 4);
+            let listHtml = sortedEmojis.map((e, i) => `
+                <div class="flex items-center gap-4 bg-white/5 p-4 rounded-xl em-item opacity-0 translate-y-6">
+                    <span class="text-2xl font-bold text-gray-500 w-6">#${i+1}</span>
+                    <span class="text-4xl">${e[0]}</span>
+                    <span class="text-xl ml-auto font-medium">${e[1].toLocaleString()}x</span>
+                </div>
+            `).join('');
+
+            return {
+                html: `
+                <div class="story-slide bg-[#0a0a0a]">
+                    <div class="text-center w-full max-w-md">
+                        <h2 class="text-4xl font-black mb-8 em-title opacity-0">Overall Vibe Check</h2>
+                        <div class="flex flex-col gap-3 text-left mb-8">
+                            ${listHtml}
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.em-title'), { opacity: 1, duration: 0.5 })
+                      .to(el.querySelectorAll('.em-item'), { opacity: 1, y: 0, duration: 0.5, stagger: 0.15, ease: "power2.out" });
+                }
+            };
+        }
+
+        function generateAwardsSlide() {
+            let essayWriter = [...userArray].sort((a,b) => b.wordsPerMsg - a.wordsPerMsg)[0];
+            let nightOwl = [...userArray].sort((a,b) => b.lateNight - a.lateNight)[0];
+            let ceoEmoji = [...userArray].sort((a,b) => {
+                let eA = Object.values(a.emojiFreq).reduce((a,b)=>a+b,0);
+                let eB = Object.values(b.emojiFreq).reduce((a,b)=>a+b,0);
+                return eB - eA;
+            })[0];
+            
+            let comedian = [...userArray].sort((a,b) => b.humorScore - a.humorScore)[0];
+            if (!comedian || comedian.humorScore === 0) {
+                comedian = [...userArray].sort((a,b) => b.causedLaughs - a.causedLaughs)[0];
+            }
+
+            return {
+                html: `
+                <div class="story-slide bg-gradient-to-br from-[#4a004a] to-black">
+                    <div class="w-full max-w-md text-center">
+                        <h2 class="text-5xl font-black mb-8 text-wrap-yellow aw-title opacity-0">The Awards 🏆</h2>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="stat-card p-4 rounded-2xl aw-card opacity-0 scale-90">
+                                <div class="text-4xl mb-2">📜</div>
+                                <h3 class="text-xs text-gray-300 uppercase tracking-wide">Essay Writer</h3>
+                                <p class="text-lg font-bold text-white mt-1 truncate">${essayWriter.name}</p>
+                            </div>
+                            <div class="stat-card p-4 rounded-2xl aw-card opacity-0 scale-90">
+                                <div class="text-4xl mb-2">🦉</div>
+                                <h3 class="text-xs text-gray-300 uppercase tracking-wide">Night Crawler</h3>
+                                <p class="text-lg font-bold text-white mt-1 truncate">${nightOwl.name}</p>
+                            </div>
+                            <div class="stat-card p-4 rounded-2xl aw-card opacity-0 scale-90">
+                                <div class="text-4xl mb-2">😂</div>
+                                <h3 class="text-xs text-gray-300 uppercase tracking-wide">CEO of Emoji</h3>
+                                <p class="text-lg font-bold text-white mt-1 truncate">${ceoEmoji.name}</p>
+                            </div>
+                            <div class="stat-card p-4 rounded-2xl aw-card opacity-0 scale-90">
+                                <div class="text-4xl mb-2">🎭</div>
+                                <h3 class="text-xs text-gray-300 uppercase tracking-wide">The Comedian</h3>
+                                <p class="text-lg font-bold text-white mt-1 truncate">${comedian.name}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.aw-title'), { opacity: 1, duration: 0.6 })
+                      .to(el.querySelectorAll('.aw-card'), { opacity: 1, scale: 1, duration: 0.6, stagger: 0.15, ease: "back.out(1.5)" });
+                }
+            };
+        }
+
+        function generateSummarySlide() {
+            let u1 = userArray[0];
+            let topEmoji = Object.keys(chatData.emojis).sort((a,b)=>chatData.emojis[b]-chatData.emojis[a])[0] || '💬';
+
+            let baseHue = (chatData.totalMessages * 7) % 360;
+            let meshStyle = `
+                background-color: hsl(${baseHue}, 50%, 15%);
+                background-image: 
+                    radial-gradient(circle at 0% 0%, hsl(${(baseHue+30)%360}, 90%, 40%) 0%, transparent 60%),
+                    radial-gradient(circle at 100% 0%, hsl(${(baseHue+180)%360}, 90%, 30%) 0%, transparent 50%),
+                    radial-gradient(circle at 100% 100%, hsl(${(baseHue+330)%360}, 90%, 30%) 0%, transparent 60%),
+                    radial-gradient(circle at 0% 100%, hsl(${baseHue}, 90%, 40%) 0%, transparent 50%);
+            `;
+
+            let maxHour = Math.max(...chatData.hours, 1);
+            let wavePoints = chatData.hours.map((val, i) => {
+                let x = (i / 23) * 100;
+                let y = 100 - ((val / maxHour) * 45);
+                return `${x},${y}`;
+            }).join(' L ');
+            let waveSvg = `<svg class="absolute bottom-0 left-0 w-full h-[60%] opacity-30 mix-blend-screen" preserveAspectRatio="none" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="waveGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="white" stop-opacity="0.8"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient></defs><path d="M 0,100 L ${wavePoints} L 100,100 Z" fill="url(#waveGrad)" /></svg>`;
+
+            let gridSvg = `<svg class="absolute inset-0 w-full h-full opacity-[0.08]" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="white" /></pattern></defs><rect width="100%" height="100%" fill="url(#grid)" /></svg>`;
+
+            return {
+                html: `
+                <div class="story-slide bg-[#050505]">
+                    <div id="export-card" class="w-full max-w-sm rounded-3xl shadow-2xl sum-card opacity-0 translate-y-10 relative overflow-hidden" style="box-shadow: 0 0 50px hsl(${baseHue}, 80%, 20%);">
+                        <div class="absolute inset-0 -z-20" style="${meshStyle}"></div>
+                        <div class="absolute inset-0 -z-10 mix-blend-overlay bg-black/10"></div>
+                        ${waveSvg}
+                        ${gridSvg}
+                        
+                        <div class="p-8 pb-10">
+                            <div class="text-center mb-6 relative z-10">
+                                <h2 class="text-3xl font-black text-white drop-shadow-md">Chat Wrapped</h2>
+                                <p class="text-xs text-white/80 mt-1 uppercase tracking-widest font-semibold">The Ultimate Report</p>
+                            </div>
+                            
+                            <div class="space-y-4 mb-6 relative z-10 bg-black/40 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-lg">
+                                <div class="flex justify-between items-end border-b border-white/10 pb-2">
+                                    <span class="text-white/80 text-sm">Total Messages</span>
+                                    <span class="text-2xl font-bold text-white">${chatData.totalMessages.toLocaleString()}</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-white/10 pb-2">
+                                    <span class="text-white/80 text-sm">Top Texter</span>
+                                    <span class="text-xl font-bold text-white truncate max-w-[130px] text-right">${u1.name}</span>
+                                </div>
+                                <div class="flex justify-between items-end border-b border-white/10 pb-2">
+                                    <span class="text-white/80 text-sm">Longest Streak</span>
+                                    <span class="text-xl font-bold text-white">${chatData.longestStreak} Days</span>
+                                </div>
+                                <div class="flex justify-between items-end pt-1">
+                                    <span class="text-white/80 text-sm">The Vibe</span>
+                                    <span class="text-3xl drop-shadow-md">${topEmoji}</span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-center text-white/60 font-bold relative z-10 tracking-wider">GENERATED SECURELY ON-DEVICE</p>
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-8 ui-controls opacity-0 flex flex-col gap-3 z-50">
+                        <button onclick="exportShareCard()" id="export-btn" class="bg-white text-black px-8 py-3 rounded-full font-bold shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:scale-105 transition active:scale-95 flex items-center justify-center gap-2 mx-auto relative z-50">
+                            <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            <span class="pointer-events-none">Save Share Card</span>
+                        </button>
+                        <button onclick="location.reload()" class="text-gray-400 text-sm hover:text-white transition relative z-50">Start Over with new chat</button>
+                    </div>
+                </div>`,
+                animation: (tl, el) => {
+                    tl.to(el.querySelector('.sum-card'), { opacity: 1, y: 0, duration: 1, ease: "power4.out" })
+                      .to(el.querySelector('.ui-controls'), { opacity: 1, duration: 0.5 });
+                }
+            };
+        }
+
+        // --- SLIDE NAVIGATION ---
+        function startSlide(index) {
+            if (index < 0 || index >= slides.length) return;
+
+            if (slides[currentSlideIdx]) {
+                slides[currentSlideIdx].classList.remove('active');
+                if(timelines[currentSlideIdx]) timelines[currentSlideIdx].pause(0); 
+                gsap.killTweensOf(`#p-fill-${currentSlideIdx}`);
+                document.getElementById(`p-fill-${currentSlideIdx}`).style.width = index > currentSlideIdx ? '100%' : '0%';
+            }
+
+            for(let i = 0; i < index; i++) document.getElementById(`p-fill-${i}`).style.width = '100%';
+            for(let i = index + 1; i < slides.length; i++) document.getElementById(`p-fill-${i}`).style.width = '0%';
+
+            currentSlideIdx = index;
+            let currentSlide = slides[currentSlideIdx];
+            currentSlide.classList.add('active');
+
+            if(timelines[currentSlideIdx]) timelines[currentSlideIdx].play();
+
+            if (currentSlideIdx < slides.length - 1) {
+                gsap.fromTo(`#p-fill-${currentSlideIdx}`, 
+                    { width: '0%' }, 
+                    { width: '100%', duration: SLIDE_DURATION / 1000, ease: "linear", onComplete: () => {
+                        if (!isHolding) nextSlide();
+                    }}
+                );
+            } else {
+                document.getElementById(`p-fill-${currentSlideIdx}`).style.width = '100%';
+            }
+        }
+
+        function nextSlide() { if (currentSlideIdx < slides.length - 1) startSlide(currentSlideIdx + 1); }
+        function prevSlide() { if (currentSlideIdx > 0) startSlide(currentSlideIdx - 1); else startSlide(0); }
+
+        // --- INTERACTION LOGIC ---
+        const wrapper = document.getElementById('slides-wrapper');
+
+        function handlePointerDown(e) {
+            if (e.target.closest('button')) return; 
+            if (document.getElementById('story-container').style.display !== 'block') return;
+            
+            isHolding = true; holdStartTime = Date.now();
+            gsap.getTweensOf(`#p-fill-${currentSlideIdx}`).forEach(t => t.pause());
+            if(timelines[currentSlideIdx]) timelines[currentSlideIdx].pause();
+            document.getElementById('pause-indicator').style.opacity = '1';
+        }
+
+        function handlePointerUp(e) {
+            if (!isHolding) return;
+            isHolding = false; 
+            let holdDuration = Date.now() - holdStartTime;
+            document.getElementById('pause-indicator').style.opacity = '0';
+
+            if (holdDuration < 200) {
+                let rect = wrapper.getBoundingClientRect();
+                let clientX = e.clientX || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : 0);
+                if (clientX < rect.width * 0.3) prevSlide();
+                else nextSlide();
+            } else {
+                gsap.getTweensOf(`#p-fill-${currentSlideIdx}`).forEach(t => t.resume());
+                if(timelines[currentSlideIdx]) timelines[currentSlideIdx].resume();
+            }
+        }
+
+        wrapper.addEventListener('mousedown', handlePointerDown);
+        wrapper.addEventListener('touchstart', (e) => { 
+            if(!e.target.closest('button')) e.preventDefault(); 
+            handlePointerDown(e); 
+        }, {passive: false});
+        
+        wrapper.addEventListener('mouseup', handlePointerUp);
+        wrapper.addEventListener('touchend', handlePointerUp);
+        wrapper.addEventListener('mouseleave', () => { if(isHolding) handlePointerUp(new Event('mouseleave')); });
+        wrapper.addEventListener('touchcancel', () => { if(isHolding) handlePointerUp(new Event('touchcancel')); });
+
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('story-container').style.display === 'block') {
+                if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+                if (e.key === 'ArrowLeft') prevSlide();
+            }
+        });
+
+        // --- SHARE CARD EXPORT LOGIC ---
+        function exportShareCard() {
+            const btn = document.getElementById('export-btn');
+            const card = document.getElementById('export-card');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = `<div class="loader" style="width:20px;height:20px;border-width:2px;margin-right:8px;"></div> Saving...`;
+            btn.disabled = true;
+
+            html2canvas(card, {
+                backgroundColor: "#0a0a0a",
+                scale: 3, 
+                useCORS: true,
+                logging: false
+            }).then(canvas => {
+                const image = canvas.toDataURL("image/jpeg", 0.9);
+                const link = document.createElement('a');
+                link.download = 'Chat-Wrapped-2024.jpg';
+                link.href = image;
+                link.click();
+                
+                btn.innerHTML = `✅ Saved to Device`;
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 3000);
+            }).catch(err => {
+                console.error(err);
+                btn.innerHTML = `❌ Error Saving`;
+                setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 3000);
+            });
+        }
+    </script>
+</body>
+</html>
